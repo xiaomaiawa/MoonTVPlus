@@ -266,6 +266,7 @@ export default function PlayRecordsPanel({
                       progress={getProgress(record)}
                       episodes={record.total_episodes}
                       currentEpisode={record.index}
+                      line={record.line}
                       query={record.search_title}
                       from='playrecord'
                       onDelete={() =>
@@ -277,6 +278,7 @@ export default function PlayRecordsPanel({
                       origin={record.origin}
                       playTime={record.play_time}
                       totalTime={record.total_time}
+                      isDuanju={Boolean(record.is_duanju)}
                     />
                     {editMode && (
                       <button

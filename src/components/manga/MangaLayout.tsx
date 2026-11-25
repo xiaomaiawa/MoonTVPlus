@@ -28,20 +28,20 @@ const tabs: MediaShellTab[] = [
 
 // 阅读页内容区样式：保持改造前的原值，避免 /manga/read 布局回归
 const READER_MAIN_CLASS =
-  'pt-[calc(5rem+env(safe-area-inset-top))] sm:pt-[calc(6rem+env(safe-area-inset-top))] px-0 pb-24 sm:pb-28 lg:pb-10';
+  'pt-[calc(5rem+var(--safe-top))] sm:pt-[calc(6rem+var(--safe-top))] px-0 pb-24 sm:pb-28 lg:pb-10';
 
 function getMeta(
   pathname: string,
   searchParams: ReturnType<typeof useSearchParams>
 ) {
   if (pathname === '/manga/shelf') {
-    return { title: '漫画书架', subtitle: '集中管理收藏的漫画' };
+    return { title: '漫画书架' };
   }
   if (pathname === '/manga/history') {
-    return { title: '漫画历史', subtitle: '从上次阅读的位置继续' };
+    return { title: '漫画历史' };
   }
   if (pathname === '/manga/search') {
-    return { title: '漫画搜索', subtitle: '按标题和来源搜索漫画' };
+    return { title: '漫画搜索' };
   }
   if (pathname === '/manga/detail') {
     return {
@@ -69,7 +69,7 @@ function getMeta(
       )}&returnTo=${encodeURIComponent(returnTo)}`,
     };
   }
-  return { title: '漫画推荐', subtitle: '按来源查看热门与最新漫画' };
+  return { title: '漫画推荐' };
 }
 
 export default function MangaLayout({

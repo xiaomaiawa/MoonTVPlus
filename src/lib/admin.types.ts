@@ -1,8 +1,19 @@
+/** 备用 OpenList 源（可添加无限条，路径用「源名@路径」指定） */
+export interface OpenListExtraSource {
+  name: string; // 源名字，唯一、非空、不含 @
+  url: string; // OpenList 服务器地址
+  username: string;
+  password: string;
+}
+
 export interface AdminConfig {
   ConfigSubscribtion: {
     URL: string;
     AutoUpdate: boolean;
     LastCheck: string;
+    // 拉取配置代理：拉取配置订阅时使用的 HTTP 代理，留空则回退到环境变量
+    // CONFIG_SUBSCRIPTION_PROXY
+    Proxy?: string;
   };
   ConfigFile: string;
   SiteConfig: {
@@ -104,7 +115,7 @@ export interface AdminConfig {
     }[];
   };
   SpecialSourceApis?: string[]; // 特殊源 key 列表，默认对普通入口隐藏
-  ClientAdSourceApis?: string[]; // 客户端去广告源 key 列表：MoonTVPlus APP / OrionTV 请求 source-detail 时 m3u8 套 proxy-m3u8
+  VideoSourceOrder?: string[]; // 视频源管理中的统一排序，包含 tvbox:<siteKey>
   SourceConfig: {
     key: string;
     name: string;
@@ -133,6 +144,12 @@ export interface AdminConfig {
     channelNumber?: number;
     disabled?: boolean;
     proxyMode?: 'full' | 'm3u8-only' | 'direct'; // 代理模式：full=全量代理，m3u8-only=仅代理m3u8，direct=直连
+    tvbox?: {
+      configUrl: string;
+      index: number;
+      revision: string;
+      channels?: unknown[]; // TVBox 订阅内嵌的频道分组
+    };
   }[];
   WebLiveConfig?: {
     key: string;
@@ -164,16 +181,13 @@ export interface AdminConfig {
   };
   OpenListConfig?: {
     Enabled: boolean; // 是否启用私人影库功能
-    URL: string; // OpenList 服务器地址
+    URL: string; // 主 OpenList 服务器地址
     Username: string; // 账号（用于登录获取Token）
     Password: string; // 密码（用于登录获取Token）
     RootPath?: string; // 旧字段：根目录路径（向后兼容，迁移后删除）
-    RootPaths?: string[]; // 新字段：多根目录路径列表
-    OfflineDownloadPath: string; // 离线下载目录，默认 "/"
-    OfflineDownloadUseCustomSource?: boolean; // 离线下载是否使用独立 OpenList 源
-    OfflineDownloadURL?: string; // 独立离线下载 OpenList 服务器地址
-    OfflineDownloadUsername?: string; // 独立离线下载 OpenList 账号
-    OfflineDownloadPassword?: string; // 独立离线下载 OpenList 密码
+    RootPaths?: string[]; // 根目录路径列表，支持「源名@路径」
+    ExtraSources?: OpenListExtraSource[]; // 备用 OpenList 源列表
+    OfflineDownloadPath: string; // 离线下载目录，支持「源名@路径」，默认 "/"
     LastRefreshTime?: number; // 上次刷新时间戳
     ResourceCount?: number; // 资源数量
     ScanInterval?: number; // 定时扫描间隔（分钟），0表示关闭，最低60分钟
@@ -181,7 +195,8 @@ export interface AdminConfig {
     DisableVideoPreview?: boolean; // 禁用预览视频，直接返回直连链接
     /**
      * 路径元信息（最长前缀匹配 folder 路径）
-     * key: 规范化路径前缀，如 /videos 可匹配 /videos/某影片
+     * key: 规范化路径前缀，如 /videos 可匹配 /videos/某影片；
+     *      也可写「源名@/videos」只对指定源生效（无前缀则对所有源生效）
      */
     PathMeta?: {
       [path: string]: {
@@ -257,7 +272,7 @@ export interface AdminConfig {
     DecisionCustomModel?: string;
     // 联网搜索配置
     EnableWebSearch: boolean; // 是否启用联网搜索
-    WebSearchProvider?: 'tavily' | 'serper' | 'serpapi' | 'bing'; // 搜索服务提供商
+    WebSearchProvider?: 'parallel' | 'tavily' | 'serper' | 'serpapi' | 'bing'; // 搜索服务提供商
     TavilyApiKey?: string; // Tavily API密钥
     SerperApiKey?: string; // Serper.dev API密钥
     SerpApiKey?: string; // SerpAPI密钥
@@ -396,6 +411,32 @@ export interface AdminConfig {
     notificationsEnabled?: boolean; // 是否启用 Telegram 通知
     defaultNotifications?: boolean; // 新绑定用户默认开启通知
   };
+  TVBoxBridgeConfig?: {
+    Enabled: boolean; // 是否启用 TVBox 桥接
+    BaseUrl: string; // 桥接地址，如 http://127.0.0.1:8787
+    Token: string; // 桥接 Token，仅服务端使用
+    // 已加载的配置地址（用于管理面板回显；桥接侧已持久化快照）
+    ConfigUrl?: string;
+    // 多仓：已选定的具体仓库地址
+    SelectedDepotUrl?: string;
+    // 多仓列表快照，供管理面板恢复选择与切换仓库
+    Depot?: {
+      configUrl: string;
+      entries: Array<{ name: string; url: string }>;
+    } | null;
+    // 已发现的站点及视频源管理设置（key 为桥接 site.key）
+    Sites?: Array<{
+      key: string;
+      name: string;
+      enabled: boolean;
+      weight?: number;
+      api?: string;
+      unsupported?: boolean;
+      searchable?: number;
+    }>;
+    // 本地文件类来源屏蔽名单（site.key）
+    BlockedLocalSites?: string[];
+  };
   MusicConfig?: {
     Enabled?: boolean; // 启用音乐功能
     BaseUrl?: string; // lxserver 地址
@@ -426,6 +467,8 @@ export interface AdminConfig {
       refillMissingEpisodes?: boolean;
       /** 自定义集数提取正则（留空用内置规则，首个捕获组作为集数） */
       episodeRegex?: string;
+      /** 覆盖父目录：留空用「离线下载目录」，填写后为「该路径/番剧名」，可用「源名@」指定备用源 */
+      downloadPath?: string;
       lastCheckTime: number;
       lastEpisode: number;
       createdAt: number;

@@ -11,6 +11,59 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    version: "227.1.0",
+    date: "2026-11-22",
+    added: [
+    "<span style='color: #F7BA0B'>【重磅】</span>支持tvbox订阅源",
+    "增加收藏失效检测"
+    ],
+    changed: [
+    "Webtv界面美化",
+    "移除客户端去广告功能",
+    "漫画搜索界面改版，多源聚合结果显示",
+    "更换bangumi镜像地址"
+    ],
+    fixed: [
+    "修复时刻表失效"
+    ]
+  },
+  {
+    version: "227.0.1",
+    date: "2026-10-28",
+    added: [
+      // 无新增内容
+    ],
+    changed: [
+    "超分在不支持的环境显示不支持"
+    ],
+    fixed: [
+    "修复电视直播源无法使用http协议"
+    ]
+  },
+  {
+    version: "227.0.0",
+    date: "2026-10-27",
+    added: [
+    " cloudflare方式部署支持内部定时任务与观影室",
+    "增加竖屏短剧模式",
+    "github部署cloudflare增加VARS变量",
+    "电视直播增加自动测速，增加测速后选择推荐路线",
+    "新增拉取配置代理",
+    "openlist支持多源",
+    "视频源支持编辑"
+    ],
+    changed: [
+    "优化新版webview与ios pwa的布局",
+    "移除/sp页面写繁杂的说明",
+    "移除硬编码的sql迁移",
+    "增强直播源在cloudflare防护下的拉取能力"
+    ],
+    fixed: [
+    "修复换源列表某些情况下源重复",
+    "加固超长数字id丢失精度问题"
+    ]
+  },
+  {
     version: "226.1.0",
     date: "2026-10-05",
     added: [

@@ -570,7 +570,7 @@ export default function MangaReadPage() {
   }, [activePage, pages, readMode]);
 
   useEffect(() => {
-    if (!mangaId || !sourceId || !chapterId) return;
+    if (!mangaId || !sourceId || !chapterId || !pages.length) return;
 
     const flushPendingRecord = () => {
       const record = pendingRecordRef.current;
@@ -619,7 +619,7 @@ export default function MangaReadPage() {
       window.removeEventListener('pagehide', flushPendingRecordOnLeave);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [chapterId, mangaId, readMode, sourceId]);
+  }, [chapterId, mangaId, pages.length, readMode, sourceId]);
 
   useEffect(() => {
     if (!mangaId || !sourceId || !chapterId || !mangaDetail) return;
@@ -1177,7 +1177,7 @@ export default function MangaReadPage() {
                 }}
                 data-index={index}
                 className={cn(
-                  'scroll-mt-[calc(3.5rem+env(safe-area-inset-top))] overflow-hidden shadow-sm sm:scroll-mt-[calc(4rem+env(safe-area-inset-top))]',
+                  'scroll-mt-[calc(3.5rem+var(--safe-top))] overflow-hidden shadow-sm sm:scroll-mt-[calc(4rem+var(--safe-top))]',
                   READER_CANVAS
                 )}
               >

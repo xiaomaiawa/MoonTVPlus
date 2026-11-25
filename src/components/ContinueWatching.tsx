@@ -166,6 +166,7 @@ export default function ContinueWatching({ className }: ContinueWatchingProps) {
                       progress={getProgress(record)}
                       episodes={record.total_episodes}
                       currentEpisode={record.index}
+                      line={record.line}
                       query={record.search_title}
                       from='playrecord'
                       onDelete={() =>
@@ -179,6 +180,7 @@ export default function ContinueWatching({ className }: ContinueWatchingProps) {
                       playTime={record.play_time}
                       totalTime={record.total_time}
                       isAnime={Boolean(record.is_anime)}
+                      isDuanju={Boolean(record.is_duanju)}
                     />
                     {record.new_episodes && record.new_episodes > 0 && (
                       <div

@@ -1,9 +1,11 @@
 /* eslint-disable @typescript-eslint/no-explicit-any, no-console, @typescript-eslint/no-non-null-assertion */
 
+import { getAdminVideoSourceKeys } from '@/lib/admin-video-sources';
 import { db } from '@/lib/db';
 import { normalizeApiBaseUrl } from '@/lib/url';
 
 import { AdminConfig } from './admin.types';
+import { fetchConfigSubscription } from './config-subscription';
 import { setServerTmdbImageBaseUrl } from './tmdb-image-base';
 
 const BUILTIN_DANMAKU_API_BASE = 'https://mtvpls-danmu.netlify.app/87654321';
@@ -149,7 +151,7 @@ export function refineConfig(adminConfig: AdminConfig): AdminConfig {
     ? fileConfig.specialSourceApis
     : undefined;
   if (specialApisFromFile) {
-    const sourceKeys = new Set(adminConfig.SourceConfig.map((source) => source.key));
+    const sourceKeys = getAdminVideoSourceKeys(adminConfig);
     adminConfig.SpecialSourceApis = Array.from(new Set(specialApisFromFile)).filter((key) =>
       sourceKeys.has(key)
     );
@@ -222,7 +224,7 @@ export function refineConfig(adminConfig: AdminConfig): AdminConfig {
   // 检查现有 LiveConfig 是否在 fileConfig.lives 中，如果不在则标记为 custom
   const livesFromFileKeys = new Set(livesFromFile.map(([key]) => key));
   currentLives.forEach((live) => {
-    if (!livesFromFileKeys.has(live.key)) {
+    if (!live.tvbox && !livesFromFileKeys.has(live.key)) {
       live.from = 'custom';
     }
   });
@@ -239,20 +241,27 @@ async function getInitConfig(
     URL: string;
     AutoUpdate: boolean;
     LastCheck: string;
+    Proxy?: string;
   } = {
     URL: '',
     AutoUpdate: false,
     LastCheck: '',
+    Proxy: process.env.CONFIG_SUBSCRIPTION_PROXY || '',
   }
 ): Promise<AdminConfig> {
   let cfgFile: ConfigFileStruct;
+
+  // 拉取配置代理：配置订阅未设置时回退到环境变量 CONFIG_SUBSCRIPTION_PROXY
+  if (!subConfig.Proxy) {
+    subConfig.Proxy = process.env.CONFIG_SUBSCRIPTION_PROXY || '';
+  }
 
   // 优先从环境变量读取订阅 URL
   const envSubUrl = process.env.CONFIG_SUBSCRIPTION_URL || '';
 
   if (envSubUrl) {
     try {
-      const response = await fetch(envSubUrl);
+      const response = await fetchConfigSubscription(envSubUrl);
       if (response.ok) {
         const configContent = await response.text();
         const bs58 = (await import('bs58')).default;
@@ -385,7 +394,6 @@ async function getInitConfig(
       : Array.isArray(cfgFile.specialSourceApis)
       ? cfgFile.specialSourceApis
       : [],
-    ClientAdSourceApis: [],
   };
 
   // 用户信息已迁移到新版数据库，不再填充 UserConfig.Users
@@ -717,39 +725,49 @@ export function configSelfCheck(adminConfig: AdminConfig): AdminConfig {
   ) {
     adminConfig.SpecialSourceApis = [];
   }
-  if (
-    !adminConfig.ClientAdSourceApis ||
-    !Array.isArray(adminConfig.ClientAdSourceApis)
-  ) {
-    adminConfig.ClientAdSourceApis = [];
-  }
   adminConfig.LiveRefreshIntervalHours = normalizeLiveRefreshIntervalHours(
     adminConfig.LiveRefreshIntervalHours
   );
 
   if (adminConfig.OpenListConfig) {
-    if (!adminConfig.OpenListConfig.RootPaths) {
-      adminConfig.OpenListConfig.RootPaths = adminConfig.OpenListConfig.RootPath
-        ? [adminConfig.OpenListConfig.RootPath]
-        : ['/'];
+    // 兼容已废弃的「离线下载独立 OpenList 源」字段（仅存在于旧配置里）
+    const ol = adminConfig.OpenListConfig as typeof adminConfig.OpenListConfig & {
+      OfflineDownloadUseCustomSource?: boolean;
+      OfflineDownloadURL?: string;
+      OfflineDownloadUsername?: string;
+      OfflineDownloadPassword?: string;
+    };
+
+    if (!ol.RootPaths) {
+      ol.RootPaths = ol.RootPath ? [ol.RootPath] : ['/'];
     }
-    if (!adminConfig.OpenListConfig.OfflineDownloadPath) {
-      adminConfig.OpenListConfig.OfflineDownloadPath = '/';
+    if (!ol.OfflineDownloadPath) {
+      ol.OfflineDownloadPath = '/';
     }
-    if (
-      adminConfig.OpenListConfig.OfflineDownloadUseCustomSource === undefined
-    ) {
-      adminConfig.OpenListConfig.OfflineDownloadUseCustomSource = false;
+
+    // 迁移：旧的独立离线下载源 → 备用源列表 + 离线下载目录加「源名@」前缀
+    if (!Array.isArray(ol.ExtraSources)) {
+      ol.ExtraSources = [];
+      if (ol.OfflineDownloadUseCustomSource && ol.OfflineDownloadURL) {
+        const name = '离线下载';
+        ol.ExtraSources.push({
+          name,
+          url: ol.OfflineDownloadURL,
+          username: ol.OfflineDownloadUsername || '',
+          password: ol.OfflineDownloadPassword || '',
+        });
+        if (!(ol.OfflineDownloadPath || '').includes('@')) {
+          ol.OfflineDownloadPath = `${name}@${ol.OfflineDownloadPath || '/'}`;
+        }
+      }
     }
-    if (adminConfig.OpenListConfig.OfflineDownloadURL === undefined) {
-      adminConfig.OpenListConfig.OfflineDownloadURL = '';
-    }
-    if (adminConfig.OpenListConfig.OfflineDownloadUsername === undefined) {
-      adminConfig.OpenListConfig.OfflineDownloadUsername = '';
-    }
-    if (adminConfig.OpenListConfig.OfflineDownloadPassword === undefined) {
-      adminConfig.OpenListConfig.OfflineDownloadPassword = '';
-    }
+
+    // 清理已废弃字段（下次保存后不再落库）
+    delete ol.OfflineDownloadUseCustomSource;
+    delete ol.OfflineDownloadURL;
+    delete ol.OfflineDownloadUsername;
+    delete ol.OfflineDownloadPassword;
+
     if (adminConfig.OpenListConfig.PathMeta === undefined) {
       adminConfig.OpenListConfig.PathMeta = {};
     } else {
@@ -794,7 +812,7 @@ export function configSelfCheck(adminConfig: AdminConfig): AdminConfig {
     return true;
   });
 
-  const validSourceKeys = new Set(adminConfig.SourceConfig.map((source) => source.key));
+  const validSpecialSourceKeys = getAdminVideoSourceKeys(adminConfig);
   // 配置文件是采集源的权威来源，special_source_apis 同理：**老库缺字段时**从 ConfigFile 补齐。
   // 只在字段缺失时回填——否则后台把特殊源全部取消勾选（存成空数组）后，
   // 每次 getConfig() 都会被配置文件又捞回来，等于关不掉。
@@ -804,10 +822,11 @@ export function configSelfCheck(adminConfig: AdminConfig): AdminConfig {
     );
   }
   adminConfig.SpecialSourceApis = Array.from(
-    new Set((adminConfig.SpecialSourceApis || []).filter((key) => validSourceKeys.has(key)))
-  );
-  adminConfig.ClientAdSourceApis = Array.from(
-    new Set((adminConfig.ClientAdSourceApis || []).filter((key) => validSourceKeys.has(key)))
+    new Set(
+      (adminConfig.SpecialSourceApis || []).filter((key) =>
+        validSpecialSourceKeys.has(key)
+      )
+    )
   );
 
   // 自定义分类去重
@@ -1151,9 +1170,13 @@ export function configSelfCheck(adminConfig: AdminConfig): AdminConfig {
     adminConfig.OpenListConfig.URL = normalizeApiBaseUrl(
       adminConfig.OpenListConfig.URL
     );
-    adminConfig.OpenListConfig.OfflineDownloadURL = normalizeApiBaseUrl(
-      adminConfig.OpenListConfig.OfflineDownloadURL
-    );
+    if (Array.isArray(adminConfig.OpenListConfig.ExtraSources)) {
+      adminConfig.OpenListConfig.ExtraSources =
+        adminConfig.OpenListConfig.ExtraSources.map((s) => ({
+          ...s,
+          url: normalizeApiBaseUrl(s.url),
+        }));
+    }
   }
 
   if (adminConfig.MusicConfig) {
@@ -1212,6 +1235,18 @@ export function configSelfCheck(adminConfig: AdminConfig): AdminConfig {
       adminConfig.AIConfig.NewProtocol ?? 'openai-completions';
     adminConfig.AIConfig.MaxContext = adminConfig.AIConfig.MaxContext ?? 131072;
     adminConfig.AIConfig.CompressThreshold = adminConfig.AIConfig.CompressThreshold ?? 90;
+  }
+
+  if (adminConfig.TVBoxBridgeConfig) {
+    adminConfig.TVBoxBridgeConfig.BaseUrl = normalizeApiBaseUrl(
+      adminConfig.TVBoxBridgeConfig.BaseUrl
+    );
+    if (!Array.isArray(adminConfig.TVBoxBridgeConfig.Sites)) {
+      adminConfig.TVBoxBridgeConfig.Sites = [];
+    }
+    if (!Array.isArray(adminConfig.TVBoxBridgeConfig.BlockedLocalSites)) {
+      adminConfig.TVBoxBridgeConfig.BlockedLocalSites = [];
+    }
   }
 
   if (adminConfig.TelegramConfig) {

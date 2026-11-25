@@ -51,6 +51,10 @@ export interface PlayRecord {
   new_episodes?: number; // 新增的剧集数量（用于显示更新提示）
   /** 是否动漫（写入时根据 CMS type_name/class 判断） */
   is_anime?: boolean;
+  /** 是否短剧（短剧竖屏页写入；普通播放页按 CMS type_name/class 判断） */
+  is_duanju?: boolean;
+  /** 线路（仅 tvbox 这类多线路源写入）：下次播放同一视频从这条线路续播 */
+  line?: string;
 }
 
 // ---- 收藏类型 ----
@@ -64,6 +68,7 @@ export interface Favorite {
   search_title?: string;
   origin?: 'vod' | 'live';
   is_completed?: boolean; // 是否已完结
+  is_invalid?: boolean; // 源站标题完全变更后失效，重新收藏时恢复
   vod_remarks?: string; // 视频备注信息
 }
 
@@ -101,12 +106,21 @@ interface UserCacheStore {
 // ---- 常量 ----
 const PLAY_RECORDS_KEY = 'moontv_play_records';
 export const SAVE_LIVE_PLAY_RECORDS_KEY = 'saveLivePlayRecords';
+export const LIVE_AUTO_SPEED_TEST_KEY = 'liveAutoSpeedTest';
 
 /** 是否允许保存直播播放记录（默认关闭）。 */
 export function isLivePlayRecordSavingEnabled(): boolean {
   return (
     typeof window !== 'undefined' &&
     localStorage.getItem(SAVE_LIVE_PLAY_RECORDS_KEY) === 'true'
+  );
+}
+
+/** 是否开启电视直播自动测速（默认关闭）。 */
+export function isLiveAutoSpeedTestEnabled(): boolean {
+  return (
+    typeof window !== 'undefined' &&
+    localStorage.getItem(LIVE_AUTO_SPEED_TEST_KEY) === 'true'
   );
 }
 
@@ -935,6 +949,10 @@ export async function savePlayRecord(
   record: PlayRecord
 ): Promise<void> {
   const key = generateStorageKey(source, id);
+  if (source.startsWith('tvbox:') && !record.line) {
+    const previous = getCachedPlayRecordsSnapshotRaw()[key];
+    if (previous?.line) record = { ...record, line: previous.line };
+  }
 
   // 数据库存储模式：乐观更新策略（包括 redis 和 upstash）
   if (STORAGE_TYPE !== 'localstorage') {
@@ -987,6 +1005,9 @@ export async function savePlayRecord(
 
   try {
     const allRecords = await getAllPlayRecordsRaw();
+    if (source.startsWith('tvbox:') && !record.line && allRecords[key]?.line) {
+      record = { ...record, line: allRecords[key].line };
+    }
     allRecords[key] = record;
     localStorage.setItem(PLAY_RECORDS_KEY, JSON.stringify(allRecords));
     window.dispatchEvent(
@@ -1606,6 +1627,8 @@ export async function saveFavorite(
   favorite: Favorite
 ): Promise<void> {
   const key = generateStorageKey(source, id);
+  // 用户主动收藏相同来源和 ID 时，清除此前的失效状态。
+  favorite = { ...favorite, is_invalid: false };
 
   // 数据库存储模式：乐观更新策略（包括 redis 和 upstash）
   if (STORAGE_TYPE !== 'localstorage') {

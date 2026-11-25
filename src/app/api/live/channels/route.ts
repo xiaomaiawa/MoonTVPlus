@@ -4,6 +4,7 @@ import { getCachedLiveChannels } from '@/lib/live';
 import { requireFeaturePermission } from '@/lib/permissions';
 
 export const runtime = 'nodejs';
+export const maxDuration = 240;
 
 export async function GET(request: NextRequest) {
   try {
@@ -27,6 +28,7 @@ export async function GET(request: NextRequest) {
       data: channelData.channels
     });
   } catch (error) {
+    console.error('[live/channels] error:', error);
     return NextResponse.json(
       { error: '获取频道信息失败' },
       { status: 500 }
